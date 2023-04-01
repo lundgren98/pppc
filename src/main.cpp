@@ -297,7 +297,7 @@ AST(std::stack<Token> tokens, bool debug = false)
  * Post-Ordering Depth First Traversal
  */
 void getOrderOfOperations(
-	std::queue<Token>& ops, const std::shared_ptr<Expression>& expr,
+	std::vector<Token>& ops, const std::shared_ptr<Expression>& expr,
 	bool debug = false
 )
 {
@@ -314,34 +314,73 @@ void getOrderOfOperations(
 	}
 	if (debug)
 		std::cout << expr->token.identifyer << " ";
-	ops.push(expr->token);
+	ops.push_back(expr->token);
 }
 
-std::stack<Token> OperationStack(
+std::vector<Token> OperationStack(
 	std::stack<std::shared_ptr<Expression>> expressionStack,
 	bool debug = false
 )
 {
-	std::stack<Token> ops{};
+	std::vector<Token> ops{};
 	while (expressionStack.size()) {
 		std::shared_ptr<Expression> expr = expressionStack.top();
 		expressionStack.pop();
-		std::queue<Token> opsQueue{};
 		if (debug)
 			std::cout << "PARSER: [" << expr->token.identifyer
 				  << "]\n\t";
-		getOrderOfOperations(opsQueue, expr, debug);
+		getOrderOfOperations(ops, expr, debug);
 		if (debug)
 			std::cout << '\n';
-		while (opsQueue.size()) {
-			ops.push(opsQueue.front());
-			opsQueue.pop();
-		}
 	}
 	return ops;
 }
 
 // END PARSER
+
+void interpreter(const std::vector<Token>& ops, bool debug = false)
+{
+	std::stack<int> sim_stack{};
+	size_t instruction = 0;
+	while (instruction < ops.size()) {
+		Token op = ops.at(instruction);
+		++instruction;
+		if (debug)
+			std::cout << '[' << op.identifyer << "]\n";
+		switch (op.type) {
+			case Token::Type::Integer: {
+				sim_stack.push(std::stoi(op.identifyer));
+				continue;
+			}
+			case Token::Type::PrintLine: {
+				std::cout << sim_stack.top() << '\n';
+				continue;
+			}
+			case Token::Type::Add: {
+				int lhs = sim_stack.top();
+				sim_stack.pop();
+				int rhs = sim_stack.top();
+				sim_stack.pop();
+				sim_stack.push(lhs + rhs);
+				continue;
+			}
+			case Token::Type::Multiply: {
+				int lhs = sim_stack.top();
+				sim_stack.pop();
+				int rhs = sim_stack.top();
+				sim_stack.pop();
+				sim_stack.push(lhs + rhs);
+				continue;
+			}
+			default: {
+				std::cerr << op.lineNumber << ":" << op.startPos
+					  << ": ERROR: " << op.identifyer
+					  << " Not Implemented Yet!\n";
+				exit(EXIT_FAILURE);
+			}
+		}
+	}
+}
 
 int main()
 {
@@ -367,5 +406,7 @@ int main()
 		}
 	}
 	std::stack<std::shared_ptr<Expression>> ast = AST(tokenStack, debugAST);
-	std::stack<Token> ops = OperationStack(ast, debugParser);
+	std::vector<Token> ops = OperationStack(ast, debugParser);
+	std::cout << "SIMULATION:\n\n" << std::endl;
+	interpreter(ops);
 }
