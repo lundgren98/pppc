@@ -10,6 +10,51 @@
 #include <stack>
 #include <string>
 
+class ShowLine
+{
+public:
+	std::vector<std::string> lines;
+
+	void at(size_t line, size_t column)
+	{
+		std::cout << lines.at(line - 1) << '\n';
+		while (column--)
+			std::cout << ' ';
+		std::cout << "^\n";
+	}
+};
+
+ShowLine showline{};
+
+// Types
+
+namespace IntrincicType
+{
+	enum IntrincicType {
+		None,
+		Unknown,
+		Integer,
+		String,
+	};
+
+	std::string HumanReadable(IntrincicType type)
+	{
+		switch (type) {
+			case None:
+				return "None";
+			case Unknown:
+				return "Unknown";
+			case Integer:
+				return "Integer";
+			case String:
+				return "String";
+		}
+		std::cerr << "ERROR: No human readable version of this "
+			     "intristic exists!";
+		exit(EXIT_FAILURE);
+	}
+} // namespace IntrincicType
+
 // TOKEN BEGIN
 struct Token {
 	enum Type {
@@ -20,6 +65,8 @@ struct Token {
 		Add,
 		Subtract,
 		Multiply,
+		Divide,
+		Modulo,
 		Assign,
 		Lesser,
 		Greater,
@@ -45,11 +92,69 @@ struct Token {
 	unsigned lineNumber;
 };
 
+std::string HumanReadable(Token::Type type)
+{
+	switch (type) {
+		case Token::Integer:
+			return "Integer";
+		case Token::String:
+			return "String";
+		case Token::Add:
+			return "Addition";
+		case Token::Subtract:
+			return "Subtraction";
+		case Token::Multiply:
+			return "Multiplication";
+		case Token::Divide:
+			return "Division";
+		case Token::Modulo:
+			return "Modulo";
+		case Token::Assign:
+			return "Assignment";
+		case Token::Lesser:
+			return "Less than comparison";
+		case Token::Greater:
+			return "Greater than comparison";
+		case Token::Not:
+			return "Logical Negation";
+		case Token::BitAnd:
+			return "Bitwise Multiplication";
+		case Token::BitRighShift:
+			return "Rightwards Bitshifting";
+		case Token::BitLeftShift:
+			return "Leftwards Bitshifting";
+		case Token::Variable:
+			return "Variable";
+		case Token::Print:
+		case Token::PrintLine:
+			return "Printing";
+		case Token::Conditional:
+			return "Conditional";
+		case Token::While:
+			return "Recursive Conditional";
+		case Token::Loop:
+			return "Recursion";
+		case Token::Do:
+			return "Beget";
+		case Token::Done:
+			return "Begotten";
+		case Token::End:
+			return "End Of Line";
+	}
+	std::cerr
+		<< "ERROR: No human readable version of this intristic exists!";
+	exit(EXIT_FAILURE);
+}
+
 Token::Type getPrimaryTokenType(char key)
 {
 	switch (key) {
 		case '*':
 			return Token::Type::Multiply;
+		case '/':
+			return Token::Type::Divide;
+		case '%':
+			return Token::Type::Modulo;
 		case '+':
 			return Token::Type::Add;
 		case '-':
@@ -109,6 +214,39 @@ Token::Type keywordTokenType(Token::Type orig, const std::string& keyword)
 }
 
 // TOKEN END
+
+void printErrorMessage(const Token& token, const std::string& errorMessage)
+{
+	std::cerr << token.lineNumber << ":" << token.startPos
+		  << ": ERROR: " << errorMessage;
+	showline.at(token.lineNumber, token.startPos);
+}
+
+void printExpectedNumberOfArguments(
+	const Token& token, unsigned long expected, unsigned long actual,
+	const std::string& errorMessage = ""
+)
+{
+	std::cerr << token.lineNumber << ":" << token.startPos
+		  << ": ERROR: " << HumanReadable(token.type) << " Expected "
+		  << expected << " arguments but got " << actual << '\n'
+		  << errorMessage;
+	showline.at(token.lineNumber, token.startPos);
+}
+
+void printExpectedType(
+	const Token& token, const IntrincicType::IntrincicType expected,
+	const IntrincicType::IntrincicType actual,
+	const std::string& errorMessage = ""
+)
+{
+	std::cerr << token.lineNumber << ":" << token.startPos
+		  << ": ERROR: " << HumanReadable(token.type) << " Expected "
+		  << HumanReadable(expected) << " but got "
+		  << HumanReadable(actual) << '\n'
+		  << errorMessage;
+	showline.at(token.lineNumber, token.startPos);
+}
 
 std::queue<Token>
 lexer(const std::string& input, unsigned lineNumber, bool debug = false)
@@ -171,7 +309,7 @@ lexer(const std::string& input, unsigned lineNumber, bool debug = false)
 				token.type, token.identifyer
 			);
 		if (debug)
-			std::cout << '[' << token.identifyer << "] ";
+			std::cout << '[' << HumanReadable(token.type) << "] ";
 		tokens.push(token);
 	}
 	if (debug)
@@ -180,6 +318,11 @@ lexer(const std::string& input, unsigned lineNumber, bool debug = false)
 }
 
 // BEGIN AST
+
+struct ExprArgs {
+	IntrincicType::IntrincicType ret, lhs, rhs;
+};
+
 struct Expression {
 	Token token;
 
@@ -189,14 +332,67 @@ struct Expression {
 		Binary,
 	} type;
 
+	ExprArgs args;
 	std::shared_ptr<Expression> LHS;
 	std::shared_ptr<Expression> RHS;
 };
+
+ExprArgs getArgsTypes(const Token& token)
+{
+	switch (token.type) {
+		case Token::Type::End:
+		case Token::Type::Do:
+		case Token::Type::Done:
+			return { IntrincicType::IntrincicType::None,
+				 IntrincicType::IntrincicType::None,
+				 IntrincicType::IntrincicType::None };
+		case Token::Type::String:
+			return { IntrincicType::IntrincicType::String,
+				 IntrincicType::IntrincicType::None,
+				 IntrincicType::IntrincicType::None };
+		case Token::Type::Variable:
+			return { IntrincicType::IntrincicType::Unknown,
+				 IntrincicType::IntrincicType::None,
+				 IntrincicType::IntrincicType::None };
+		case Token::Type::Integer:
+			return { IntrincicType::IntrincicType::Integer,
+				 IntrincicType::IntrincicType::None,
+				 IntrincicType::IntrincicType::None };
+		case Token::Type::Not:
+		case Token::Type::Print:
+		case Token::Type::PrintLine:
+			return { IntrincicType::IntrincicType::Integer,
+				 IntrincicType::IntrincicType::Integer,
+				 IntrincicType::IntrincicType::None };
+		case Token::Type::Add:
+		case Token::Type::BitAnd:
+		case Token::Type::BitRighShift:
+		case Token::Type::BitLeftShift:
+		case Token::Type::Subtract:
+		case Token::Type::Multiply:
+		case Token::Type::Divide:
+		case Token::Type::Modulo:
+		case Token::Type::Lesser:
+		case Token::Type::Greater:
+		case Token::Type::Conditional:
+		case Token::Type::While:
+		case Token::Type::Loop:
+		case Token::Type::Assign:
+			return { IntrincicType::IntrincicType::Integer,
+				 IntrincicType::IntrincicType::Integer,
+				 IntrincicType::IntrincicType::Integer };
+	}
+	std::cerr
+		<< "ERROR: Forgot to assing expression type to a token type!\n";
+	exit(EXIT_FAILURE);
+}
 
 Expression::Type getExpressionType(const Token& token)
 {
 	switch (token.type) {
 		/* nullary */
+		case Token::Type::Do:
+		case Token::Type::Done:
 		case Token::Type::End:
 		case Token::Type::Integer:
 		case Token::Type::String:
@@ -214,14 +410,14 @@ Expression::Type getExpressionType(const Token& token)
 		case Token::Type::BitLeftShift:
 		case Token::Type::Subtract:
 		case Token::Type::Multiply:
+		case Token::Type::Divide:
+		case Token::Type::Modulo:
 		case Token::Type::Lesser:
 		case Token::Type::Greater:
 		case Token::Type::Conditional:
 		case Token::Type::While:
 		case Token::Type::Loop:
 		case Token::Type::Assign:
-		case Token::Type::Do:
-		case Token::Type::Done:
 			return Expression::Type::Binary;
 	}
 	std::cerr
@@ -229,7 +425,7 @@ Expression::Type getExpressionType(const Token& token)
 	exit(EXIT_FAILURE);
 }
 
-void printASTDebugMessage(std::shared_ptr<Expression> expr)
+void printASTDebugMessage(const std::shared_ptr<Expression>& expr)
 {
 	std::cout << "AST:\n";
 	std::cout << expr->token.identifyer << " ";
@@ -250,9 +446,10 @@ AST(std::stack<Token> tokens, bool debug = false)
 		Token token = tokens.top();
 		tokens.pop();
 		Expression::Type type = getExpressionType(token);
+		ExprArgs args = getArgsTypes(token);
 		if (type == Expression::Type::Nullary) {
 			stack.push(std::make_shared<Expression>(Expression{
-				token, type, nullptr, nullptr }));
+				token, type, args, nullptr, nullptr }));
 			if (debug)
 				printASTDebugMessage(stack.top());
 			continue;
@@ -260,18 +457,16 @@ AST(std::stack<Token> tokens, bool debug = false)
 		size_t argc_expected
 			= (type == Expression::Type::Binary) ? 2 : 1;
 		if (stack.size() < argc_expected) {
-			std::cerr << token.lineNumber << ":" << token.startPos
-				  << ": ERORR: " << token.identifyer
-				  << " Expects " << argc_expected
-				  << " arguments, but " << stack.size()
-				  << " where given.\n";
+			printExpectedNumberOfArguments(
+				token, argc_expected, stack.size()
+			);
 			exit(EXIT_FAILURE);
 		}
 		if (type == Expression::Type::Unary) {
 			auto lhs = stack.top();
 			stack.pop();
 			stack.push(std::make_shared<Expression>(Expression{
-				token, type, lhs, nullptr }));
+				token, type, args, lhs, nullptr }));
 			if (debug)
 				printASTDebugMessage(stack.top());
 			continue;
@@ -282,7 +477,7 @@ AST(std::stack<Token> tokens, bool debug = false)
 			auto rhs = stack.top();
 			stack.pop();
 			stack.push(std::make_shared<Expression>(Expression{
-				token, type, lhs, rhs }));
+				token, type, args, lhs, rhs }));
 			if (debug)
 				printASTDebugMessage(stack.top());
 		}
@@ -338,6 +533,79 @@ std::vector<Token> OperationStack(
 
 // END PARSER
 
+// BEGIN Type Checker
+
+bool illegalType(const std::shared_ptr<Expression>& expr)
+{
+	if (!expr)
+		return false;
+	if (expr->LHS && expr->LHS->args.ret != expr->args.lhs) {
+		printExpectedType(
+			expr->token, expr->args.lhs, expr->LHS->args.ret
+		);
+		return true;
+	}
+	if (expr->RHS && expr->RHS->args.ret != expr->args.rhs) {
+		printExpectedType(
+			expr->token, expr->args.rhs, expr->RHS->args.ret
+		);
+		return true;
+	}
+	return false;
+}
+
+bool illegalEval(const std::shared_ptr<Expression>& expr)
+{
+	if (!expr)
+		return false;
+	switch (expr->token.type) {
+		case Token::Type::Divide:
+		case Token::Type::Modulo: {
+			if (std::stoi(expr->RHS->token.identifyer) == 0) {
+				printErrorMessage(
+					expr->token,
+					" Does not allow zero-valued RHS!\n"
+				);
+				return true;
+			}
+		}
+		default:
+			break;
+	}
+	return false;
+}
+
+void typechecker(
+	std::stack<std::shared_ptr<Expression>> expressionStack,
+	bool debug = false
+)
+{
+	if (debug)
+		std::cout << "TYPECHECKER\n";
+	bool illegalExpression = false;
+	while (expressionStack.size()) {
+		std::queue<std::shared_ptr<Expression>> checkMe{};
+		std::shared_ptr<Expression> expr = expressionStack.top();
+		expressionStack.pop();
+		checkMe.push(expr);
+		while (checkMe.size()) {
+			std::shared_ptr<Expression> node = checkMe.front();
+			checkMe.pop();
+			illegalExpression |= illegalType(node);
+			illegalExpression |= illegalEval(node);
+			if (node->LHS)
+				checkMe.push(node->LHS);
+			if (node->RHS)
+				checkMe.push(node->LHS);
+		}
+	}
+	if (illegalExpression)
+		exit(EXIT_FAILURE);
+}
+
+// END TYPECHECKER
+
+// BEGIN INTERPRETER
 void interpreter(const std::vector<Token>& ops, bool debug = false)
 {
 	std::stack<int> sim_stack{};
@@ -364,6 +632,14 @@ void interpreter(const std::vector<Token>& ops, bool debug = false)
 				sim_stack.push(lhs + rhs);
 				continue;
 			}
+			case Token::Type::Subtract: {
+				int lhs = sim_stack.top();
+				sim_stack.pop();
+				int rhs = sim_stack.top();
+				sim_stack.pop();
+				sim_stack.push(lhs - rhs);
+				continue;
+			}
 			case Token::Type::Multiply: {
 				int lhs = sim_stack.top();
 				sim_stack.pop();
@@ -372,10 +648,48 @@ void interpreter(const std::vector<Token>& ops, bool debug = false)
 				sim_stack.push(lhs + rhs);
 				continue;
 			}
+			case Token::Type::Divide: {
+				int lhs = sim_stack.top();
+				sim_stack.pop();
+				int rhs = sim_stack.top();
+				sim_stack.pop();
+				sim_stack.push(lhs / rhs);
+				continue;
+			}
+			case Token::Type::Modulo: {
+				int lhs = sim_stack.top();
+				sim_stack.pop();
+				int rhs = sim_stack.top();
+				sim_stack.pop();
+				sim_stack.push(lhs % rhs);
+				continue;
+			}
+			case Token::Type::BitAnd: {
+				int lhs = sim_stack.top();
+				sim_stack.pop();
+				int rhs = sim_stack.top();
+				sim_stack.pop();
+				sim_stack.push(lhs & rhs);
+				continue;
+			}
+			case Token::Type::BitLeftShift: {
+				int lhs = sim_stack.top();
+				sim_stack.pop();
+				int rhs = sim_stack.top();
+				sim_stack.pop();
+				sim_stack.push(lhs << rhs);
+				continue;
+			}
+			case Token::Type::BitRighShift: {
+				int lhs = sim_stack.top();
+				sim_stack.pop();
+				int rhs = sim_stack.top();
+				sim_stack.pop();
+				sim_stack.push(lhs >> rhs);
+				continue;
+			}
 			default: {
-				std::cerr << op.lineNumber << ":" << op.startPos
-					  << ": ERROR: " << op.identifyer
-					  << " Not Implemented Yet!\n";
+				printErrorMessage(op, "Not Implemented Yet!\n");
 				exit(EXIT_FAILURE);
 			}
 		}
@@ -389,9 +703,11 @@ int main()
 	for (std::string line; std::getline(file, line); lines.push_back(line))
 		;
 	file.close();
+	showline.lines = lines;
 	bool debugLexer = true;
 	bool debugAST = true;
 	bool debugParser = true;
+	bool debugTypechecker = true;
 	unsigned lineNumber = 0;
 	std::stack<Token> tokenStack{};
 	for (const std::string& line : lines) {
@@ -406,6 +722,7 @@ int main()
 		}
 	}
 	std::stack<std::shared_ptr<Expression>> ast = AST(tokenStack, debugAST);
+	typechecker(ast, debugTypechecker);
 	std::vector<Token> ops = OperationStack(ast, debugParser);
 	std::cout << "SIMULATION:\n\n" << std::endl;
 	interpreter(ops);
